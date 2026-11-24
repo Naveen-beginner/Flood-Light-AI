@@ -1,6 +1,8 @@
 package com.example.floodlight
 
 import android.os.Bundle
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -37,6 +39,7 @@ class MainActivity : FlutterActivity() {
             capabilityChannelName
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "hasValidatedInternet" -> result.success(hasValidatedInternet())
                 "isGeminiNanoSupported" -> lifecycleScope.launch {
                     try {
                         result.success(isGeminiNanoSupported())
@@ -88,6 +91,15 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+    }
+
+    private fun hasValidatedInternet(): Boolean {
+        val connectivityManager = getSystemService(ConnectivityManager::class.java)
+        val activeNetwork = connectivityManager?.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+            ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     private suspend fun isGeminiNanoSupported(): Boolean {

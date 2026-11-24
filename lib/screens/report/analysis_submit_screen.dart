@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:floodlight/screens/report/issue_created_success.dart';
 import 'package:floodlight/services/hybrid_ai_service.dart';
+import 'package:floodlight/services/device_ai_capability.dart';
 import 'package:floodlight/services/issue_repository.dart';
 import 'package:floodlight/services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -35,18 +36,19 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
   @override
   void initState() {
     super.initState();
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
-      (results) {
-        final isOnline = !results.contains(ConnectivityResult.none);
-        if (isOnline &&
-            !_isAnalyzing &&
-            (_isWaitingForConnection ||
-                _analysisResult?.isOffline == true ||
-                _analysisError != null)) {
-          _runHybridAnalysis();
-        }
-      },
-    );
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) async {
+      final isOnline = !results.contains(ConnectivityResult.none);
+      if (isOnline &&
+          !_isAnalyzing &&
+          (_isWaitingForConnection ||
+              _analysisResult?.isOffline == true ||
+              _analysisError != null)) {
+        if (!await DeviceAiCapability.hasValidatedInternet()) return;
+        _runHybridAnalysis();
+      }
+    });
     _runHybridAnalysis();
   }
 
@@ -58,14 +60,6 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
 
   Future<void> _runHybridAnalysis() async {
     if (!mounted || _isAnalyzing) return;
-
-    final connectivity = await Connectivity().checkConnectivity();
-    final isOnline = !connectivity.contains(ConnectivityResult.none);
-
-    if (!isOnline) {
-      await _runOfflineAnalysis();
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -97,11 +91,10 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      final connectivity = await Connectivity().checkConnectivity();
-      final isStillOnline =
-          !connectivity.contains(ConnectivityResult.none);
+      final hasValidatedInternet =
+          await DeviceAiCapability.hasValidatedInternet();
 
-      if (!isStillOnline) {
+      if (!hasValidatedInternet) {
         await _runOfflineAnalysis();
         return;
       }
@@ -110,8 +103,7 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
         _isLoading = false;
         _isWaitingForConnection = false;
         _isAnalyzing = false;
-        _analysisError =
-            'Unable to analyze this image with Gemini. Check Firebase AI configuration and try again.';
+        _analysisError = error is ImageAnalysisException ? error.message : 'Unable to analyze this image with Gemini. Check Firebase AI configuration and try again.';
       });
     }
   }
@@ -144,8 +136,7 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
         _isLoading = false;
         _isWaitingForConnection = false;
         _isAnalyzing = false;
-        _analysisError =
-            'The offline image preview could not be generated. It will be retried automatically when internet returns.';
+        _analysisError = 'The offline image preview could not be generated. It will be retried automatically when internet returns.';
       });
     }
   }
@@ -185,17 +176,15 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      var message =
-          'Unable to submit report. Check connection and try again.';
+      var message = 'Unable to submit report. Check connection and try again.';
       if (error is FirebaseException) {
         if (error.code == 'permission-denied') {
-          message =
-              'Submission denied: enable Cloud Firestore API and configure Firestore/App Check rules in Firebase Console.';
+          message = 'Submission denied: enable Cloud Firestore API and configure Firestore/App Check rules in Firebase Console.';
         } else if (error.code == 'unavailable') {
-          message =
-              'Submission unavailable: check the internet connection and Firebase configuration.';
+          message = 'Submission unavailable: check the internet connection and Firebase configuration.';
         } else {
-          message = 'Submission failed [${error.code}]: ${error.message ?? error.toString()}';
+          message =
+              'Submission failed [${error.code}]: ${error.message ?? error.toString()}';
         }
       }
       setState(() {

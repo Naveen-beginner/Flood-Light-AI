@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.floodlight"
-        minSdk = 24
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -124,37 +124,24 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
     String responseSource;
     bool responseIsOnDevice;
 
-    if (_supportsNano) {
+    if (_isOnline) {
       try {
-        aiResponseText = await DeviceAiCapability.generateWithGeminiNano(
-          "You are Flood Light AI, an expert emergency and disaster safety assistant. Answer this query helpfully, concisely, and accurately: $text",
-        );
-        responseSource = 'Gemini Nano';
+        aiResponseText = await _generateCloudResponse(text);
+        responseSource = 'Gemini 3.8 Flash';
+        responseIsOnDevice = false;
+      } catch (error) {
+        debugPrint('Cloud Gemini generation failed: $error');
+        aiResponseText = await _generateOnDeviceResponse(text);
+        responseSource = _supportsNano
+            ? 'Gemini Nano fallback'
+            : 'Offline Emergency Guidance';
         responseIsOnDevice = true;
-      } catch (_) {
-        if (_isOnline) {
-          aiResponseText = await _generateCloudResponse(text);
-          responseSource = 'Gemini 3.8 Flash';
-          responseIsOnDevice = false;
-        } else {
-          aiResponseText = OfflineAiEngine.generateResponse(
-            text,
-            supportsNano: false,
-          );
-          responseSource = 'Offline Emergency Guidance';
-          responseIsOnDevice = true;
-        }
       }
-    } else if (_isOnline) {
-      aiResponseText = await _generateCloudResponse(text);
-      responseSource = 'Gemini 3.8 Flash';
-      responseIsOnDevice = false;
     } else {
-      aiResponseText = OfflineAiEngine.generateResponse(
-        text,
-        supportsNano: false,
-      );
-      responseSource = 'Offline Emergency Guidance';
+      aiResponseText = await _generateOnDeviceResponse(text);
+      responseSource = _supportsNano
+          ? 'Gemini Nano'
+          : 'Offline Emergency Guidance';
       responseIsOnDevice = true;
     }
 
@@ -174,19 +161,29 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
   }
 
   Future<String> _generateCloudResponse(String text) async {
-    try {
-      final model = FirebaseAI.googleAI().generativeModel(
-        model: 'gemini-3.8-flash',
-      );
-      final response = await model.generateContent([
-        Content.text(
+    final model = FirebaseAI.googleAI().generativeModel(
+      model: 'gemini-3.8-flash',
+    );
+    final response = await model.generateContent([
+      Content.text(
+        "You are Flood Light AI, an expert emergency and disaster safety assistant. Answer this query helpfully, concisely, and accurately: $text",
+      ),
+    ]);
+    return response.text ?? "I couldn't generate a response at the moment.";
+  }
+
+  Future<String> _generateOnDeviceResponse(String text) async {
+    if (_supportsNano) {
+      try {
+        return await DeviceAiCapability.generateWithGeminiNano(
           "You are Flood Light AI, an expert emergency and disaster safety assistant. Answer this query helpfully, concisely, and accurately: $text",
-        ),
-      ]);
-      return response.text ?? "I couldn't generate a response at the moment.";
-    } catch (_) {
-      return "Cloud Gemini is temporarily unavailable. Please retry this question.";
+        );
+      } catch (error) {
+        debugPrint('Gemini Nano generation failed: $error');
+      }
     }
+
+    return OfflineAiEngine.generateResponse(text, supportsNano: false);
   }
 
   @override
@@ -289,17 +286,15 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
 
   /// Clean auto-switching banner matching HomeScreen card design
   Widget _buildAutoHybridStatusBanner() {
-    final nanoPreferred = _supportsNano;
-    final statusColor = nanoPreferred || !_isOnline
-        ? Colors.green
-        : Colors.indigo;
+    final useOnDevice = !_isOnline;
+    final statusColor = useOnDevice ? Colors.green : Colors.indigo;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: nanoPreferred || !_isOnline
+          color: useOnDevice
               ? const Color(0xFFF1F8F2)
               : const Color(0xFFEEF2FF),
           borderRadius: BorderRadius.circular(16),
@@ -316,7 +311,7 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
         child: Row(
           children: [
             Icon(
-              nanoPreferred || !_isOnline
+              useOnDevice
                   ? Icons.offline_bolt_rounded
                   : Icons.cloud_done_rounded,
               size: 20,
@@ -325,10 +320,10 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                nanoPreferred
-                    ? "⚡ Automatic Mode: Gemini Nano preferred; Cloud fallback"
-                    : _isOnline
+                _isOnline
                     ? "☁️ Automatic Mode: Cloud AI (Gemini 3.8 Flash) Active"
+                    : _supportsNano
+                    ? "⚡ Automatic Mode: Gemini Nano (on-device)"
                     : "⚡ Automatic Mode: Offline Emergency Guidance Active",
                 style: const TextStyle(
                   fontSize: 13,

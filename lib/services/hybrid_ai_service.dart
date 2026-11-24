@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:firebase_ai/firebase_ai.dart';
@@ -24,11 +25,19 @@ class AnalysisResult {
   });
 }
 
+class ImageAnalysisException implements Exception {
+  final String message;
+
+  const ImageAnalysisException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class HybridAiService {
-  static String _shortText(
-    String text, {
-    required int maxChars,
-  }) {
+  static const _maxImageAnalysisAttempts = 4;
+
+  static String _shortText(String text, {required int maxChars}) {
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= maxChars) return normalized;
     final shortened = normalized.substring(0, maxChars);
@@ -73,6 +82,52 @@ class HybridAiService {
         : normalized;
   }
 
+  static bool _isTransientServerError(ServerException error) {
+    final message = error.message.toUpperCase();
+    return RegExp(r'"CODE"\s*:\s*(429|500|502|503|504)\b').hasMatch(message) ||
+        message.contains('"STATUS": "INTERNAL"') ||
+        message.contains('"STATUS": "UNAVAILABLE"') ||
+        message.contains('"STATUS": "DEADLINE_EXCEEDED"');
+  }
+
+  static bool _isUnavailableServerError(ServerException error) {
+    final message = error.message.toUpperCase();
+    return RegExp(r'"CODE"\s*:\s*(503|504)\b').hasMatch(message) ||
+        message.contains('"STATUS": "UNAVAILABLE"') ||
+        message.contains('"STATUS": "DEADLINE_EXCEEDED"');
+  }
+
+  static Future<GenerateContentResponse> _generateImageContent(
+    GenerativeModel model,
+    String mimeType,
+    Uint8List imageBytes,
+    String prompt,
+  ) async {
+    for (var attempt = 1; attempt <= _maxImageAnalysisAttempts; attempt++) {
+      try {
+        return await model.generateContent([
+          Content.multi([
+            InlineDataPart(mimeType, imageBytes),
+            TextPart(prompt),
+          ]),
+        ]);
+      } on ServerException catch (error) {
+        if (attempt == _maxImageAnalysisAttempts ||
+            !_isTransientServerError(error)) {
+          rethrow;
+        }
+        // ignore: avoid_print
+        print(
+          'Transient Gemini image analysis error; retrying '
+          '(${attempt + 1}/$_maxImageAnalysisAttempts): $error',
+        );
+        await Future<void>.delayed(Duration(seconds: 1 << attempt));
+      }
+    }
+
+    throw StateError('Gemini image analysis retry loop ended unexpectedly.');
+  }
+
   static Future<AnalysisResult> analyzeOfflineImage(File imageFile) async {
     if (!await imageFile.exists()) {
       throw Exception('The selected image could not be found.');
@@ -82,9 +137,7 @@ class HybridAiService {
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
     final image = frame.image;
-    final byteData = await image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    );
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
 
     int redSum = 0;
@@ -114,7 +167,8 @@ class HybridAiService {
     final darkRatio = sampleCount == 0 ? 0 : darkPixels / sampleCount;
     final blueDominant = averageBlue > averageGreen && averageBlue > averageRed;
 
-    final isLikelyFlood = blueDominant ||
+    final isLikelyFlood =
+        blueDominant ||
         (averageBlue >= 105 && brightness >= 90 && brightness <= 180);
     final severity = isLikelyFlood
         ? (darkRatio > 0.35 ? 'High' : 'Medium')
@@ -126,8 +180,7 @@ class HybridAiService {
           : 'Flood Hazard Needs Verification',
       severity: severity,
       category: 'Water Logging',
-      description:
-          isLikelyFlood
+      description: isLikelyFlood
           ? 'The image shows possible water or flood patterns. This is a preliminary offline estimate and not a definitive hazard assessment.'
           : 'The image is inconclusive for flood classification. Verify conditions visually and stay clear of unsafe areas.',
       suggestedActions: const [
@@ -162,12 +215,12 @@ class HybridAiService {
       const prompt =
           "Analyze this flood or disaster image. Be concise and practical. Return valid JSON only with: 'problemTitle' (catchy, one-line title of at most 8 words), 'severity' (High, Medium, or Low), 'category' (Water Logging, Structural Risk, Traffic Hazard, or Other), 'description' (maximum 2 short lines or 210 characters), and 'suggestedActions' (3 short, actionable safety or restoration steps).";
 
-      final response = await model.generateContent([
-        Content.multi([
-          InlineDataPart(mimeType, imageBytes),
-          TextPart(prompt),
-        ]),
-      ]);
+      final response = await _generateImageContent(
+        model,
+        mimeType,
+        imageBytes,
+        prompt,
+      );
 
       final aiResponse = response.text;
       if (aiResponse != null && aiResponse.isNotEmpty) {
@@ -208,9 +261,23 @@ class HybridAiService {
           source: 'CLOUD',
         );
       }
+    } on ServerException catch (error) {
+      // ignore: avoid_print
+      print('Firebase image analysis error: $error');
+      if (_isTransientServerError(error)) {
+        throw ImageAnalysisException(
+          _isUnavailableServerError(error)
+              ? 'Gemini is temporarily unavailable or timed out. Your image '
+                    'was not analyzed offline. Please retry shortly.'
+              : 'Gemini is temporarily experiencing high demand. Your image '
+                    'was not analyzed offline. Please try again shortly.',
+        );
+      }
+      rethrow;
     } catch (e) {
       // ignore: avoid_print
       print('Firebase image analysis error: $e');
+      rethrow;
     }
 
     throw Exception(

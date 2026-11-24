@@ -97,10 +97,10 @@ The service requests valid JSON and maps the result into a typed `AnalysisResult
 
 ### Offline chat mode
 
-The chat screen checks the device's actual ML Kit GenAI feature status and prefers on-device Gemini Nano for every message when it is available. If the Nano model is downloadable, the native Android bridge downloads it before generating a response.
+The chat screen checks network status before every message and uses cloud Gemini when internet is available. It uses on-device Gemini Nano when disconnected, downloading the model if needed.
 
-- **Nano available:** The app generates the response with ML Kit GenAI Prompt API (`com.google.mlkit:genai-prompt`).
-- **Nano unavailable or generation failure while connected:** The app falls back to Gemini 3.8 Flash through `firebase_ai`.
+- **Connected:** The app generates the response with Gemini 3.8 Flash through `firebase_ai`.
+- **Cloud request fails or disconnected:** The app falls back to ML Kit GenAI Prompt API (`com.google.mlkit:genai-prompt`) when Nano is available.
 - **No usable model or network:** The app uses `OfflineAiEngine`, a bundled on-device keyword and protocol fallback.
 - **Emergency guidance:** Water purification, evacuation, electrical safety, SOS, and generic flood-safety prompts remain accessible.
 
@@ -108,7 +108,7 @@ Nano availability is determined by ML Kit's `checkStatus()` API, not by checking
 
 ### Image analysis behavior
 
-Image analysis uses a two-mode hybrid flow. When connectivity is available, the app performs only multimodal Gemini cloud analysis. If the device is genuinely offline, it runs an on-device image-statistics preview and watches for connectivity. When internet returns, the same image is automatically upgraded to Gemini analysis. If the network drops during a cloud request, the app switches to the local preview.
+Image analysis always attempts multimodal Gemini cloud analysis first, without relying on the connectivity indicator to choose the model. If the cloud request fails, an Android validated-internet check decides whether to show a cloud error or run an on-device image-statistics preview. A validated internet connection never falls back to local analysis. When internet returns, the same image is automatically upgraded to Gemini analysis.
 
 ---
 
