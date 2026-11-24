@@ -97,13 +97,14 @@ The service requests valid JSON and maps the result into a typed `AnalysisResult
 
 ### Offline chat mode
 
-The chat screen rechecks network status before every message.
+The chat screen checks the device's actual ML Kit GenAI feature status and prefers on-device Gemini Nano for every message when it is available. If the Nano model is downloadable, the native Android bridge downloads it before generating a response.
 
-- **Connected:** The app calls the Gemini 3.8 Flash model through `firebase_ai`.
-- **Disconnected or cloud request failure:** The app uses `OfflineAiEngine`, a bundled on-device keyword and protocol fallback.
+- **Nano available:** The app generates the response with ML Kit GenAI Prompt API (`com.google.mlkit:genai-prompt`).
+- **Nano unavailable or generation failure while connected:** The app falls back to Gemini 3.8 Flash through `firebase_ai`.
+- **No usable model or network:** The app uses `OfflineAiEngine`, a bundled on-device keyword and protocol fallback.
 - **Emergency guidance:** Water purification, evacuation, electrical safety, SOS, and generic flood-safety prompts remain accessible.
 
-Gemini Nano is displayed only after the Android native capability channel confirms that an on-device Gemini Nano/runtime package or AI Core feature is available. Unsupported devices show “Offline Emergency Guidance” or “Offline Emergency AI,” backed by bundled local emergency rules rather than a generative Nano model.
+Nano availability is determined by ML Kit's `checkStatus()` API, not by checking whether an AI Core package is installed. The Prompt API is currently beta and requires a compatible device and Google Play services.
 
 ### Image analysis behavior
 

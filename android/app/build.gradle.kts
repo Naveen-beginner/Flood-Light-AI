@@ -48,6 +48,9 @@ dependencies {
     // Native Firebase AI Logic SDK (supports hybrid on-device + cloud)
     implementation("com.google.firebase:firebase-ai")
 
+    // On-device Gemini Nano prompt generation
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
+
     // Mandatory Firebase App Check
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-appcheck-debug")
