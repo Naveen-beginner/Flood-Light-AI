@@ -93,7 +93,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Chip(
                       label: Text(
                         issue.isOfflineAi
-                            ? '⚡ Gemini Nano 4 (Offline)'
+                            ? '⚡ On-Device Offline AI'
                             : '☁️ Gemini 3.8 Flash (Online)',
                       ),
                       backgroundColor: Colors.indigo.shade50,

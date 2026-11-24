@@ -8,6 +8,7 @@ import 'package:floodlight/services/hybrid_ai_service.dart';
 import 'package:floodlight/services/issue_repository.dart';
 import 'package:floodlight/services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -96,7 +97,22 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      await _runOfflineAnalysis();
+      final connectivity = await Connectivity().checkConnectivity();
+      final isStillOnline =
+          !connectivity.contains(ConnectivityResult.none);
+
+      if (!isStillOnline) {
+        await _runOfflineAnalysis();
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+        _isWaitingForConnection = false;
+        _isAnalyzing = false;
+        _analysisError =
+            'Unable to analyze this image with Gemini. Check Firebase AI configuration and try again.';
+      });
     }
   }
 
@@ -169,9 +185,21 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
       );
     } catch (error) {
       if (!mounted) return;
+      var message =
+          'Unable to submit report. Check connection and try again.';
+      if (error is FirebaseException) {
+        if (error.code == 'permission-denied') {
+          message =
+              'Submission denied: enable Cloud Firestore API and configure Firestore/App Check rules in Firebase Console.';
+        } else if (error.code == 'unavailable') {
+          message =
+              'Submission unavailable: check the internet connection and Firebase configuration.';
+        } else {
+          message = 'Submission failed [${error.code}]: ${error.message ?? error.toString()}';
+        }
+      }
       setState(() {
-        _submissionError =
-            'Unable to submit report. Check connection and try again.';
+        _submissionError = message;
         _isSubmitting = false;
       });
     }
@@ -335,7 +363,7 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
                         children: [
                           _buildAiModeChip(
                             _analysisResult?.isOffline == true
-                                ? '⚡ Gemini Nano (Offline)'
+                                ? '⚡ On-Device Offline AI'
                                 : '☁️ Gemini 3.8 Flash (Online)',
                             _analysisResult?.isOffline == true
                                 ? Colors.green.shade700
@@ -373,6 +401,8 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
                           const SizedBox(height: 10.0),
                           Text(
                             _analysisResult?.problemTitle ?? 'Hazard Detected',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -412,6 +442,8 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
                       Text(
                         _analysisResult?.description ??
                             'AI analyzed the captured image successfully.',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 16,
                           color: Color(0xFF4B5563),

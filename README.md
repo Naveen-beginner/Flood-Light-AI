@@ -103,11 +103,11 @@ The chat screen rechecks network status before every message.
 - **Disconnected or cloud request failure:** The app uses `OfflineAiEngine`, a bundled on-device keyword and protocol fallback.
 - **Emergency guidance:** Water purification, evacuation, electrical safety, SOS, and generic flood-safety prompts remain accessible.
 
-If the app says **Gemini Nano Edge AI** in the UI, this indicates the product's intended on-device edge mode. In the current source, the chat's offline fallback is an explicit local emergency rule engine rather than a downloaded generative model; the native Firebase AI integration is the implementation responsible for Firebase hybrid inference and inference-source metadata.
+Gemini Nano is displayed only after the Android native capability channel confirms that an on-device Gemini Nano/runtime package or AI Core feature is available. Unsupported devices show “Offline Emergency Guidance” or “Offline Emergency AI,” backed by bundled local emergency rules rather than a generative Nano model.
 
 ### Image analysis behavior
 
-Image analysis uses a three-stage hybrid flow. The app detects connectivity and immediately runs an on-device image-statistics preview while offline. When internet returns, it automatically replaces that preliminary result with multimodal Gemini cloud analysis. If the cloud request fails while the device has a network connection, the app falls back to the local preview and retries automatically on the next connectivity change.
+Image analysis uses a two-mode hybrid flow. When connectivity is available, the app performs only multimodal Gemini cloud analysis. If the device is genuinely offline, it runs an on-device image-statistics preview and watches for connectivity. When internet returns, the same image is automatically upgraded to Gemini analysis. If the network drops during a cloud request, the app switches to the local preview.
 
 ---
 

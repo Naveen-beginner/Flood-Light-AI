@@ -25,6 +25,54 @@ class AnalysisResult {
 }
 
 class HybridAiService {
+  static String _shortText(
+    String text, {
+    required int maxChars,
+  }) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxChars) return normalized;
+    final shortened = normalized.substring(0, maxChars);
+    final lastSpace = shortened.lastIndexOf(' ');
+    return '${shortened.substring(0, lastSpace > 20 ? lastSpace : maxChars).trim()}...';
+  }
+
+  static String _titleText(String text) {
+    final shortened = _shortText(text, maxChars: 58);
+    return shortened.endsWith('...')
+        ? shortened
+        : shortened.replaceAll(RegExp(r'[.!?]+$'), '');
+  }
+
+  static String _descriptionText(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final sentences = normalized
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .where((sentence) => sentence.trim().isNotEmpty)
+        .take(2)
+        .toList();
+    return _shortText(
+      sentences.isEmpty ? normalized : sentences.join(' '),
+      maxChars: 210,
+    );
+  }
+
+  static List<String> _actionText(List<dynamic>? actions) {
+    final source = actions ?? const [];
+    final normalized = source
+        .map((action) => _shortText(action.toString(), maxChars: 90))
+        .where((action) => action.isNotEmpty)
+        .take(3)
+        .toList();
+
+    return normalized.isEmpty
+        ? const [
+            'Move to higher ground and avoid flood water.',
+            'Keep away from electrical hazards.',
+            'Contact local emergency services immediately.',
+          ]
+        : normalized;
+  }
+
   static Future<AnalysisResult> analyzeOfflineImage(File imageFile) async {
     if (!await imageFile.exists()) {
       throw Exception('The selected image could not be found.');
@@ -34,8 +82,6 @@ class HybridAiService {
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
     final image = frame.image;
-    final imageWidth = image.width;
-    final imageHeight = image.height;
     final byteData = await image.toByteData(
       format: ui.ImageByteFormat.rawRgba,
     );
@@ -76,12 +122,14 @@ class HybridAiService {
 
     return AnalysisResult(
       problemTitle: isLikelyFlood
-          ? 'Possible Flood or Waterlogging Detected'
-          : 'Possible Flood Hazard Requires Verification',
+          ? 'Flood or Waterlogging Likely'
+          : 'Flood Hazard Needs Verification',
       severity: severity,
       category: 'Water Logging',
       description:
-          'Offline image analysis detected ${isLikelyFlood ? 'blue-dominant or water-like visual patterns' : 'a hazard scene that could not be classified with confidence'} using local image statistics. This is an on-device preliminary assessment, not a definitive Gemini analysis. $imageWidth x $imageHeight image data was inspected.',
+          isLikelyFlood
+          ? 'The image shows possible water or flood patterns. This is a preliminary offline estimate and not a definitive hazard assessment.'
+          : 'The image is inconclusive for flood classification. Verify conditions visually and stay clear of unsafe areas.',
       suggestedActions: const [
         'Move to higher ground and avoid entering standing or moving water.',
         'Do not touch electrical equipment or downed power lines near water.',
@@ -112,7 +160,7 @@ class HybridAiService {
       );
 
       const prompt =
-          "You are an AI disaster and hazard assessment expert. Analyze this flood or disaster image objectively. Return valid JSON only with keys: 'problemTitle' (String), 'severity' (High, Medium, or Low), 'category' (String like Water Logging, Structural Risk, Traffic Hazard, or Other), 'description' (Detailed description), and 'suggestedActions' (List of 3 actionable restoration steps).";
+          "Analyze this flood or disaster image. Be concise and practical. Return valid JSON only with: 'problemTitle' (catchy, one-line title of at most 8 words), 'severity' (High, Medium, or Low), 'category' (Water Logging, Structural Risk, Traffic Hazard, or Other), 'description' (maximum 2 short lines or 210 characters), and 'suggestedActions' (3 short, actionable safety or restoration steps).";
 
       final response = await model.generateContent([
         Content.multi([
@@ -146,13 +194,16 @@ class HybridAiService {
             ];
 
         return AnalysisResult(
-          problemTitle: data['problemTitle'] ?? 'Hazard Detected',
+          problemTitle: _titleText(
+            data['problemTitle']?.toString() ?? 'Flood Hazard Detected',
+          ),
           severity: data['severity'] ?? 'Medium',
           category: data['category'] ?? 'General Hazard',
-          description:
-              data['description'] ??
-              'AI analyzed the captured image via Gemini.',
-          suggestedActions: actions,
+          description: _descriptionText(
+            data['description']?.toString() ??
+                'A flood hazard was identified for local review.',
+          ),
+          suggestedActions: _actionText(actions),
           isOffline: false,
           source: 'CLOUD',
         );

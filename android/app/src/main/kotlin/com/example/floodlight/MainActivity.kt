@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.floodlight/hybrid_ai"
+    private val capabilityChannelName = "com.example.floodlight/device_ai"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +27,17 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            capabilityChannelName
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "isGeminiNanoSupported") {
+                result.success(isGeminiNanoSupported())
+            } else {
+                result.notImplemented()
+            }
+        }
 
         val hybridModel = Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
             modelName = "gemini-3.8-flash"
@@ -55,6 +67,29 @@ class MainActivity : FlutterActivity() {
                     }
                 } else {
                     result.notImplemented()
+                }
+            }
+
+            private fun isGeminiNanoSupported(): Boolean {
+                val packageNames = listOf(
+                "com.google.android.aicore",
+                "com.google.android.gms"
+                )
+                val packageManager = applicationContext.packageManager
+
+                for (packageName in packageNames) {
+                try {
+                    packageManager.getPackageInfo(packageName, 0)
+                    if (packageName == "com.google.android.aicore") {
+                        return true
+                    }
+                } catch (_: Exception) {
+                    // Continue checking supported packages.
+                }
+                }
+
+                return packageManager.systemAvailableFeatures.any {
+                it.name == "com.google.android.feature.AI_CORE"
                 }
             }
     }

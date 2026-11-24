@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           title: const Text('About Flood Light'),
           content: const Text(
-            'Flood Light uses Firebase Hybrid AI to provide guidance both online and offline, including with Gemini Nano.',
+            'Flood Light uses Firebase Cloud AI when connected and local emergency guidance when offline.',
           ),
           actions: [
             Column(

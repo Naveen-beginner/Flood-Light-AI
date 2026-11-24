@@ -40,7 +40,7 @@ class AdminAiService {
         final parts = text.split('|||');
         return RegionalSummary(
           regionalStatus: parts.isNotEmpty
-              ? "⚡ [Gemini Nano 4 / Hybrid AI]: ${parts[0].trim()}"
+              ? "☁️ [Gemini 3.8 Flash]: ${parts[0].trim()}"
               : 'Regional telemetry active.',
           priorities: parts.length > 1
               ? [parts[1].trim()]
@@ -66,7 +66,7 @@ class AdminAiService {
 
     return RegionalSummary(
       regionalStatus:
-          '⚡ [Gemini Nano 4 Edge AI - On-Device Analysis]: Dynamically processed ${issues.length} active community reports locally on device hardware.',
+          '⚡ [Offline Emergency Analysis]: Reviewed ${issues.length} active community reports using bundled on-device data rules.',
       priorities: issues.isEmpty
           ? ['No active hazards reported in system.']
           : issues

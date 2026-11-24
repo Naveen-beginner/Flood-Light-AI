@@ -1,6 +1,8 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:floodlight/services/offline_ai_engine.dart';
+import 'package:floodlight/services/device_ai_capability.dart';
 import 'package:material_ui/material_ui.dart';
 
 class ChatMessage {
@@ -34,6 +36,8 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isOnline = true;
+  bool _supportsNano = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   final List<ChatMessage> _messages = [
     ChatMessage(
@@ -55,6 +59,24 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
   void initState() {
     super.initState();
     _checkNetworkStatus();
+    _checkNanoCapability();
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+          if (!mounted) return;
+          setState(() {
+            _isOnline = !results.contains(ConnectivityResult.none);
+          });
+        });
+  }
+
+  Future<void> _checkNanoCapability() async {
+    final supportsNano =
+        await DeviceAiCapability.supportsGeminiNano();
+    if (mounted) {
+      setState(() {
+        _supportsNano = supportsNano;
+      });
+    }
   }
 
   Future<void> _checkNetworkStatus() async {
@@ -109,11 +131,15 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
             response.text ?? "I couldn't generate a response at the moment.";
         usedOffline = false;
       } catch (e) {
-        aiResponseText = OfflineAiEngine.generateResponse(text);
-        usedOffline = true;
+        aiResponseText =
+            "Cloud Gemini is temporarily unavailable. Please retry this question.";
+        usedOffline = false;
       }
     } else {
-      aiResponseText = OfflineAiEngine.generateResponse(text);
+      aiResponseText = OfflineAiEngine.generateResponse(
+        text,
+        supportsNano: _supportsNano,
+      );
       usedOffline = true;
     }
 
@@ -133,6 +159,7 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -263,7 +290,9 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
               child: Text(
                 _isOnline
                     ? "☁️ Automatic Mode: 100% Cloud AI (Gemini 3.8 Flash) Active"
-                    : "⚡ Automatic Mode: Gemini Nano 4 Edge AI Active",
+                    : _supportsNano
+                        ? "⚡ Automatic Mode: Gemini Nano 4 Edge AI Active"
+                        : "⚡ Automatic Mode: Offline Emergency Guidance Active",
                 style: const TextStyle(
                   fontSize: 13,
                   color: textDark,
@@ -322,7 +351,11 @@ class _FloodHybridChatScreenState extends State<FloodHybridChatScreen> {
                       ),
                     ),
                     child: Text(
-                      msg.isOffline ? "⚡ Gemini Nano 4" : "☁️ Gemini 3.8 Flash",
+                      msg.isOffline
+                          ? (_supportsNano
+                              ? "⚡ Gemini Nano 4"
+                              : "⚡ Offline Emergency AI")
+                          : "☁️ Gemini 3.8 Flash",
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

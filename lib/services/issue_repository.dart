@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class ReportedIssue {
   final String id;
@@ -87,12 +88,12 @@ class IssueRepository {
         } on FirebaseException catch (error) {
           // Storage being unavailable must not prevent the report, location,
           // and AI analysis from being saved in Firestore.
-          print(
+          debugPrint(
             'Firebase Storage upload failed '
             '(code: ${error.code}): ${error.message}',
           );
         } catch (error) {
-          print('Unexpected photo upload failure: $error');
+          debugPrint('Unexpected photo upload failure: $error');
         }
       }
     }
