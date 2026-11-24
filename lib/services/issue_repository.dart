@@ -45,7 +45,7 @@ class ReportedIssue {
     'longitude': longitude,
     'timestamp': timestamp,
     'status': status,
-    'photoUrl': photoUrl ?? photoPath,
+    'photoUrl': photoUrl,
     'isOfflineAi': isOfflineAi,
     'createdAt': FieldValue.serverTimestamp(),
   };
@@ -78,11 +78,22 @@ class IssueRepository {
             .child('issue_photos')
             .child('${issue.id}.${extension.isEmpty ? 'jpg' : extension}');
 
-        await storageRef.putData(
-          bytes,
-          SettableMetadata(contentType: contentType),
-        );
-        photoUrl = await storageRef.getDownloadURL();
+        try {
+          await storageRef.putData(
+            bytes,
+            SettableMetadata(contentType: contentType),
+          );
+          photoUrl = await storageRef.getDownloadURL();
+        } on FirebaseException catch (error) {
+          // Storage being unavailable must not prevent the report, location,
+          // and AI analysis from being saved in Firestore.
+          print(
+            'Firebase Storage upload failed '
+            '(code: ${error.code}): ${error.message}',
+          );
+        } catch (error) {
+          print('Unexpected photo upload failure: $error');
+        }
       }
     }
 

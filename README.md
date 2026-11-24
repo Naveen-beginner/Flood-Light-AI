@@ -63,7 +63,7 @@ When connectivity is available, Flood Light uses:
 - Firebase App Check
 - Structured prompts for hazard title, severity, category, description, and suggested actions
 
-The native Android integration in `MainActivity` sends a prompt through Firebase AI and exposes the response and inference source to Flutter through a named Method Channel.
+The Flutter image workflow sends the captured image bytes and a structured prompt to Firebase AI, which performs multimodal Gemini reasoning. The native Android `MainActivity` channel remains available for native integrations, but report image analysis is now performed directly in Dart using `FirebaseAI` and `InlineDataPart`.
 
 ### Hybrid image analysis flow
 
@@ -77,7 +77,7 @@ Flutter report workflow
      |
      +--> Precise GPS location
      |
-     +--> Native Firebase AI Method Channel
+     +--> Firebase AI SDK (Flutter)
                   |
                   +--> Gemini 3.8 Flash / Firebase hybrid inference
                   |
@@ -93,7 +93,7 @@ Flutter report workflow
      Firebase Storage + Cloud Firestore
 ```
 
-The native service requests valid JSON and maps the result into a typed `AnalysisResult`. It reports `ON_DEVICE`, `CLOUD`, or `FALLBACK` as source metadata where the platform inference source is available.
+The service requests valid JSON and maps the result into a typed `AnalysisResult`. Cloud image analysis is marked as `CLOUD`; if it is interrupted or unavailable, the app never invents a fabricated analysis and provides a retry state.
 
 ### Offline chat mode
 
@@ -104,6 +104,10 @@ The chat screen rechecks network status before every message.
 - **Emergency guidance:** Water purification, evacuation, electrical safety, SOS, and generic flood-safety prompts remain accessible.
 
 If the app says **Gemini Nano Edge AI** in the UI, this indicates the product's intended on-device edge mode. In the current source, the chat's offline fallback is an explicit local emergency rule engine rather than a downloaded generative model; the native Firebase AI integration is the implementation responsible for Firebase hybrid inference and inference-source metadata.
+
+### Image analysis behavior
+
+Image analysis uses a three-stage hybrid flow. The app detects connectivity and immediately runs an on-device image-statistics preview while offline. When internet returns, it automatically replaces that preliminary result with multimodal Gemini cloud analysis. If the cloud request fails while the device has a network connection, the app falls back to the local preview and retries automatically on the next connectivity change.
 
 ---
 
@@ -211,7 +215,6 @@ If the app says **Gemini Nano Edge AI** in the UI, this indicates the product's 
 | Mobile UI | Flutter, Dart |
 | Material design | Material 3 / `material_ui` |
 | Cloud AI | Firebase AI Logic / Gemini 3.8 Flash |
-| Native Android AI bridge | Kotlin, Flutter Method Channels |
 | On-device fallback | Local Dart emergency protocol engine |
 | Authentication/security | Firebase App Check |
 | Database | Cloud Firestore |
@@ -316,6 +319,19 @@ android/app/google-services.json
 ```
 
 > Firebase configuration and API keys in a client application identify the project; they must be combined with appropriate Firebase security rules and App Check enforcement.
+
+### Firebase Storage 404 troubleshooting
+
+If the app logs `StorageException` with HTTP 404 or `Object does not exist at location`:
+
+1. Open **Firebase Console > Project Settings > General**.
+2. Open **Firebase Storage** and create or link the Storage bucket.
+3. Confirm that the bucket in **Google Cloud Console** matches `google-services.json` and `firebase_options.dart`.
+4. Enable the **Cloud Storage for Firebase** API and billing if required.
+5. Publish compatible Storage rules, for example a development-only rule set such as `allow read, write: if request.auth != null;`.
+6. Add the correct `storage_bucket` value, then regenerate configuration with `flutterfire configure`.
+
+Storage upload failure is isolated from report submission. Flood Light still saves report text, AI results, and GPS coordinates to Firestore, then notifies the user if the complete submission has a Firestore error.
 
 ### 4. Configure Android permissions
 
@@ -493,6 +509,7 @@ The app is intended as a decision-support system, not a replacement for official
 
 - Android is currently the configured platform.
 - The offline chat fallback is a local keyword/protocol engine, not a general-purpose on-device language model.
+- Offline image analysis uses local image statistics and is a preliminary hazard indicator, not a multimodal generative classification.
 - The native image flow assumes Firebase AI returns JSON matching the requested schema.
 - The admin dashboard loads reports from memory/Firestore and may require a refresh flow in extended use.
 - Admin status updates are not yet implemented.

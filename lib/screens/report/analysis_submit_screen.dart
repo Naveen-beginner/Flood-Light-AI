@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:floodlight/screens/report/issue_created_success.dart';
 import 'package:floodlight/services/hybrid_ai_service.dart';
 import 'package:floodlight/services/issue_repository.dart';
@@ -21,39 +23,115 @@ class AnalysisSubmitScreen extends StatefulWidget {
 class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _isWaitingForConnection = false;
+  bool _isAnalyzing = false;
   String? _submissionError;
+  String? _analysisError;
   AnalysisResult? _analysisResult;
   Position? _location;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (results) {
+        final isOnline = !results.contains(ConnectivityResult.none);
+        if (isOnline &&
+            !_isAnalyzing &&
+            (_isWaitingForConnection ||
+                _analysisResult?.isOffline == true ||
+                _analysisError != null)) {
+          _runHybridAnalysis();
+        }
+      },
+    );
     _runHybridAnalysis();
   }
 
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
   Future<void> _runHybridAnalysis() async {
-    if (!mounted) return;
+    if (!mounted || _isAnalyzing) return;
+
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline = !connectivity.contains(ConnectivityResult.none);
+
+    if (!isOnline) {
+      await _runOfflineAnalysis();
+      return;
+    }
+
     setState(() {
       _isLoading = true;
+      _isWaitingForConnection = false;
+      _isAnalyzing = true;
+      _analysisError = null;
     });
 
-    // Fetch precise location and run Hybrid AI analysis in parallel
-    final locationFuture = LocationService.fetchPreciseLocation();
-    final analysisFuture = HybridAiService.analyzeImage(
-      File(widget.photo.path),
-    );
+    try {
+      // Fetch precise location and run real cloud/hybrid AI analysis in parallel.
+      final locationFuture = LocationService.fetchPreciseLocation();
+      final analysisFuture = HybridAiService.analyzeImage(
+        File(widget.photo.path),
+      );
 
-    final results = await Future.wait<Object?>([
-      locationFuture,
-      analysisFuture,
-    ]);
+      final results = await Future.wait<Object?>([
+        locationFuture,
+        analysisFuture,
+      ]);
 
-    if (!mounted) return;
+      if (!mounted) return;
+      setState(() {
+        _location = results[0] as Position?;
+        _analysisResult = results[1] as AnalysisResult;
+        _isLoading = false;
+        _isWaitingForConnection = false;
+        _isAnalyzing = false;
+        _analysisError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      await _runOfflineAnalysis();
+    }
+  }
+
+  Future<void> _runOfflineAnalysis() async {
     setState(() {
-      _location = results[0] as Position?;
-      _analysisResult = results[1] as AnalysisResult;
-      _isLoading = false;
+      _isLoading = true;
+      _isWaitingForConnection = false;
+      _isAnalyzing = true;
+      _analysisError = null;
     });
+
+    try {
+      final offlineResult = await HybridAiService.analyzeOfflineImage(
+        File(widget.photo.path),
+      );
+      final location = await LocationService.fetchPreciseLocation();
+
+      if (!mounted) return;
+      setState(() {
+        _location = location;
+        _analysisResult = offlineResult;
+        _isLoading = false;
+        _isWaitingForConnection = false;
+        _isAnalyzing = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isWaitingForConnection = false;
+        _isAnalyzing = false;
+        _analysisError =
+            'The offline image preview could not be generated. It will be retried automatically when internet returns.';
+      });
+    }
   }
 
   Future<void> _submitIssue() async {
@@ -134,6 +212,94 @@ class _AnalysisSubmitScreenState extends State<AnalysisSubmitScreen> {
                         ),
                       ),
                     ],
+                  ),
+                )
+              : _isWaitingForConnection
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.wifi_off_rounded,
+                          size: 56,
+                          color: Colors.indigoAccent,
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Waiting for internet',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Image analysis needs cloud AI. Flood Light will automatically analyze this image when connectivity returns.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _customActionButton(
+                          'Retry Now',
+                          Colors.deepPurpleAccent,
+                          Colors.white,
+                          Icons.refresh_rounded,
+                          _runHybridAnalysis,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _analysisError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.cloud_off_rounded,
+                          size: 56,
+                          color: Colors.redAccent,
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Analysis unavailable',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _analysisError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _customActionButton(
+                          'Retry Analysis',
+                          Colors.deepPurpleAccent,
+                          Colors.white,
+                          Icons.refresh_rounded,
+                          _runHybridAnalysis,
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : SingleChildScrollView(

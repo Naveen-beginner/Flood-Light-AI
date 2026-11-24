@@ -109,12 +109,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 if (issue.photoPath != null) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.file(
-                      File(issue.photoPath!),
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+                    child: issue.photoPath!.startsWith('http')
+                        ? Image.network(
+                            issue.photoPath!,
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const SizedBox(
+                                  height: 200,
+                                  child: Center(
+                                    child: Text('Photo unavailable'),
+                                  ),
+                                ),
+                          )
+                        : Image.file(
+                            File(issue.photoPath!),
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const SizedBox(
+                                  height: 200,
+                                  child: Center(
+                                    child: Text('Photo unavailable'),
+                                  ),
+                                ),
+                          ),
                   ),
                   const SizedBox(height: 20),
                 ],
