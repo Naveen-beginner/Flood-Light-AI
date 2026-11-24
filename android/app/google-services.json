@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "309674544193",
+    "project_id": "flood-light-c8896",
+    "storage_bucket": "flood-light-c8896.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:309674544193:android:a6c9bce667bd6a149a8ac0",
+        "android_client_info": {
+          "package_name": "com.example.floodlight"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdR6K2y89mdh3UM4vUN57Siv8ebjmX0j4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
